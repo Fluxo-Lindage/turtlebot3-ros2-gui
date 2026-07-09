@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!--
+  GUI 嵌入式仿真相机模型
+
+  由 process_manager.spawn_gui_camera() 通过
+    ros2 run gazebo_ros spawn_entity.py -file gui_camera.sdf -entity gui_camera
+  注入到正在运行的 Gazebo 世界中。
+
+  发布话题: /gui_camera/cam/image_raw  (sensor_msgs/Image, 编码 rgb8)
+  分辨率 320x240 @ 8Hz，负载很低，适合嵌进 GUI。
+
+  === 调整视角 ===
+  修改下方 <pose> 的 "x y z roll pitch yaw"（单位：米 / 弧度）
+  Gazebo 相机沿局部 +X 方向看，+Z 朝上。
+  正俯视（俯瞰图）：   <pose>2.5 2.5 8.0 0 1.5708 0</pose>
+  当前为从 (4,4,6) 斜俯视原点的 3/4 视角。
+-->
+<sdf version="1.6">
+  <model name="gui_camera">
+    <static>true</static>
+    <pose>4.0 4.0 6.0 0 0.9 3.927</pose>
+    <link name="gui_camera_link">
+      <sensor name="cam" type="camera">
+        <update_rate>8</update_rate>
+        <visualize>false</visualize>
+        <camera name="head">
+          <horizontal_fov>1.0</horizontal_fov>
+          <image>
+            <width>320</width>
+            <height>240</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+        <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>gui_camera</namespace>
+          </ros>
+          <frame_name>gui_camera_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+  </model>
+</sdf>

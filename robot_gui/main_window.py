@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QRadioButton, QButtonGroup, QTextEdit,
     QSplitter, QFrame, QGridLayout, QSizePolicy,
     QMessageBox, QApplication, QFileDialog, QScrollArea,
+    QTabWidget,
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 from PyQt5.QtGui import QFont, QColor, QTextCursor
@@ -31,6 +32,7 @@ import numpy as np
 
 from .ros_node import RosRobotNode, RosSpinThread
 from .process_manager import ProcessManager, AVAILABLE_WORLDS, ProcessType
+from .gazebo_view import GazeboViewWidget
 from .map_widget import MapWidget
 
 DEFAULT_MAP_DIR = os.path.expanduser('~/robot_maps')
@@ -93,7 +95,15 @@ class MainWindow(QMainWindow):
 
         self._map_widget = MapWidget()
         self._map_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        body.addWidget(self._map_widget)
+
+        self._gazebo_view = GazeboViewWidget()
+        self._gazebo_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # 中间用 Tab 切换“实时地图”和“仿真视图（Gazebo 相机）”
+        self._view_tabs = QTabWidget()
+        self._view_tabs.addTab(self._map_widget, '实时地图')
+        self._view_tabs.addTab(self._gazebo_view, '仿真视图')
+        body.addWidget(self._view_tabs)
 
         right = self._create_robot_state_panel()
         right.setMinimumWidth(240)
@@ -190,7 +200,11 @@ class MainWindow(QMainWindow):
         self._btn_gazebo_start.clicked.connect(self._on_start_gazebo); br.addWidget(self._btn_gazebo_start)
         self._btn_gazebo_stop = QPushButton('停止'); self._btn_gazebo_stop.setEnabled(False)
         self._btn_gazebo_stop.clicked.connect(self._on_stop_gazebo); br.addWidget(self._btn_gazebo_stop)
-        ly.addLayout(br); return g
+        ly.addLayout(br)
+        self._btn_respawn_cam = QPushButton('重新生成相机')
+        self._btn_respawn_cam.setToolTip('向 Gazebo 重新注入 GUI 仿真相机（用于首启失败或切换场景后）')
+        self._btn_respawn_cam.clicked.connect(self._on_respawn_cam); ly.addWidget(self._btn_respawn_cam)
+        return g
 
     def _create_slam_group(self):
         g = QGroupBox('SLAM 建图'); ly = QVBoxLayout(g); ly.setSpacing(6)
@@ -286,6 +300,7 @@ class MainWindow(QMainWindow):
         self._ros_thread.state_updated.connect(self._on_state_updated)
         self._ros_thread.map_updated.connect(self._on_map_updated)
         self._ros_thread.nav_result.connect(self._on_nav_result)
+        self._ros_thread.gazebo_image_updated.connect(self._gazebo_view.update_image)
         self._ros_thread.start()
         self._log('info', 'ROS2 通信节点已启动')
 
@@ -298,6 +313,15 @@ class MainWindow(QMainWindow):
         if self._process_manager.start_gazebo(world_key):
             self._btn_gazebo_start.setEnabled(False); self._btn_gazebo_stop.setEnabled(True)
             self._gazebo_running = True
+            # 异步注入 GUI 仿真相机（失败会在日志里提示，可点“重新生成相机”重试）
+            self._process_manager.spawn_gui_camera()
+
+    def _on_respawn_cam(self):
+        if not self._gazebo_running:
+            QMessageBox.information(self, '提示', '请先启动仿真环境！'); return
+        if self._ros_node: self._ros_node.clear_gui_camera()
+        self._gazebo_view.clear_view()
+        self._process_manager.spawn_gui_camera()
 
     def _on_stop_gazebo(self):
         self._process_manager.stop_gazebo()
@@ -490,7 +514,9 @@ class MainWindow(QMainWindow):
     def _clear_map_and_state(self):
         if self._ros_node:
             self._ros_node.reset_state()
+            self._ros_node.clear_gui_camera()
         self._map_widget.clear_map()
+        self._gazebo_view.clear_view()
         self._lbl_map_status.setText('等待中...')
         self._lbl_map_status.setStyleSheet('color:#8b7355; font-size:18px; font-weight:bold; border:none; background:transparent;')
 

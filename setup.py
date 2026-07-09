@@ -38,6 +38,7 @@ setup(
     packages=find_packages(),
     package_data={
         'robot_gui.config': ['*.yaml'],
+        'robot_gui.gazebo': ['*.sdf'],
     },
     include_package_data=True,
     python_requires='>=3.8',

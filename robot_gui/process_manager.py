@@ -159,6 +159,64 @@ class ProcessManager(QObject):
         self._stop_process(ProcessType.GAZEBO)
         self.log_message.emit('仿真环境已停止', 'info')
 
+    def spawn_gui_camera(self) -> bool:
+        """
+        向运行中的 Gazebo 世界注入一个固定角度相机，供 GUI 嵌入显示。
+
+        通过 ros2 run gazebo_ros spawn_entity.py 注入 gui_camera.sdf。
+        异步执行（不阻塞 GUI）：先等 gzserver 就绪，失败则重试若干次。
+        相机发布 /gui_camera/.../image_raw，由 ros_node 自动发现并订阅。
+
+        Returns:
+            bool: 任务已启动返回 True
+        """
+        pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sdf = os.path.join(pkg_dir, 'robot_gui', 'gazebo', 'gui_camera.sdf')
+        if not os.path.exists(sdf):
+            self.log_message.emit(f'相机 SDF 不存在: {sdf}', 'error')
+            return False
+
+        env = os.environ.copy()
+        env['TURTLEBOT3_MODEL'] = TURTLEBOT3_MODEL
+
+        def worker():
+            # 等 gzserver + 世界加载完
+            time.sleep(5.0)
+            for attempt in range(5):
+                try:
+                    result = subprocess.run(
+                        [
+                            'ros2', 'run', 'gazebo_ros', 'spawn_entity.py',
+                            '-file', sdf,
+                            '-entity', 'gui_camera',
+                            '-timeout', '20',
+                        ],
+                        capture_output=True, text=True, env=env, timeout=40.0,
+                    )
+                    out = (result.stdout or '') + (result.stderr or '')
+                    if result.returncode == 0:
+                        self.log_message.emit(
+                            f'已注入 GUI 仿真相机（第 {attempt + 1} 次尝试成功）', 'info'
+                        )
+                        return
+                    # 实体已存在或 service 没好，重试
+                    if 'exists' in out.lower():
+                        self.log_message.emit('GUI 相机已存在，无需重复注入', 'info')
+                        return
+                    self.log_message.emit(
+                        f'相机注入尝试 {attempt + 1} 失败，重试中...', 'warn'
+                    )
+                except subprocess.TimeoutExpired:
+                    self.log_message.emit('相机注入超时，重试中...', 'warn')
+                time.sleep(3.0)
+            self.log_message.emit(
+                'GUI 相机注入失败，仿真视图将无数据。'
+                '确认 Gazebo 在运行后可点「重新生成相机」。', 'warn'
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
     def start_slam(self) -> bool:
         """
         Starting SLAM 建图

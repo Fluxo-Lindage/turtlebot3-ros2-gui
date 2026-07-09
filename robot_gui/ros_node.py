@@ -16,6 +16,7 @@ import numpy as np
 from typing import Optional, Tuple
 
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
+from PyQt5.QtGui import QImage
 
 import rclpy
 from rclpy.node import Node
@@ -23,6 +24,7 @@ from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.time import Time as RosTime
 from rclpy.duration import Duration as RosDuration
+from rclpy.qos import qos_profile_sensor_data
 
 # ROS2 消息和动作类型
 from nav_msgs.msg import Odometry, OccupancyGrid
@@ -31,7 +33,10 @@ from geometry_msgs.msg import (
     Point, Quaternion, TransformStamped,
 )
 from nav2_msgs.action import NavigateToPose
+from sensor_msgs.msg import Image as SensorImage
 from tf2_ros import Buffer, TransformListener
+
+from .gazebo_view import image_msg_to_qimage
 
 
 class RosRobotNode(Node):
@@ -102,6 +107,12 @@ class RosRobotNode(Node):
         # 待上报给 GUI 的导航事件 [(success, message), ...]
         # Action 回调在 executor 线程触发，通过此队列交给 RosSpinThread 用信号发出
         self._nav_results: list = []
+
+        # ---- GUI 嵌入式相机 ----
+        # 自动发现 /gui_camera/.../image_raw 话题并订阅（话题名不写死，避免猜错）
+        self._gui_cam_sub = None
+        self._gui_cam_image: Optional[QImage] = None
+        self._gui_cam_seq: int = -1
 
         self.get_logger().info('ROS 机器人节点初始化完成 (含 TF 支持)')
 
@@ -343,6 +354,61 @@ class RosRobotNode(Node):
             self._nav_results.clear()
             return results
 
+    # ===================== GUI 嵌入式相机 =====================
+
+    def discover_gui_camera_topic(self) -> bool:
+        """
+        自动查找 gui_camera 的 image_raw 话题并订阅。
+
+        话题名不写死：spawn 出来的相机实际话题可能是
+        /gui_camera/cam/image_raw 或 /gui_camera/image_raw，
+        这里用 get_topic_names_and_types() 发现后按规则匹配。
+        已订阅则直接返回 True。
+        """
+        if self._gui_cam_sub is not None:
+            return True
+        for name, types in self.get_topic_names_and_types():
+            if 'gui_camera' not in name:
+                continue
+            if 'image_raw' not in name:
+                continue
+            if 'sensor_msgs/msg/Image' not in (types or []):
+                continue
+            self._subscribe_gui_camera(name)
+            return True
+        return False
+
+    def _subscribe_gui_camera(self, topic: str):
+        self._gui_cam_sub = self.create_subscription(
+            SensorImage, topic, self._gui_camera_callback, qos_profile_sensor_data
+        )
+        self.get_logger().info(f'已订阅 GUI 相机: {topic}')
+
+    def _gui_camera_callback(self, msg):
+        img = image_msg_to_qimage(msg)
+        if img.isNull():
+            return
+        with self._lock:
+            self._gui_cam_image = img
+            self._gui_cam_seq += 1
+
+    def get_gui_camera_image(self) -> Tuple[Optional[QImage], int]:
+        """返回 (最新 QImage, seq)；无数据时返回 (None, seq)"""
+        with self._lock:
+            return self._gui_cam_image, self._gui_cam_seq
+
+    def clear_gui_camera(self):
+        """清除缓存图片并重置订阅（停止/切换仿真时调用，便于下次重新发现）"""
+        with self._lock:
+            self._gui_cam_image = None
+            self._gui_cam_seq += 1
+        if self._gui_cam_sub is not None:
+            try:
+                self.destroy_subscription(self._gui_cam_sub)
+            except Exception:
+                pass
+            self._gui_cam_sub = None
+
     # ===================== 数学工具 =====================
 
     @staticmethod
@@ -367,6 +433,7 @@ class RosSpinThread(QThread):
     state_updated = pyqtSignal(dict)
     map_updated = pyqtSignal(dict)
     nav_result = pyqtSignal(bool, str)  # (success, message) 导航完成/拒绝反馈
+    gazebo_image_updated = pyqtSignal(QImage)  # GUI 相机最新一帧
 
     def __init__(self, ros_node: RosRobotNode, parent=None):
         super().__init__(parent)
@@ -376,12 +443,17 @@ class RosSpinThread(QThread):
         self._running = False
         self._state_interval = 0.1   # 100ms
         self._map_interval = 0.5     # 500ms
+        self._cam_discover_interval = 2.0  # 相机话题发现
+        self._cam_img_interval = 0.1        # 相机帧轮询
         self._last_map_seq = -1
+        self._last_gui_img_seq = -1
 
     def run(self):
         self._running = True
         next_state = time.time()
         next_map = time.time()
+        next_cam_discover = time.time()
+        next_cam_img = time.time()
 
         while self._running:
             self._executor.spin_once(timeout_sec=0.05)
@@ -391,6 +463,18 @@ class RosSpinThread(QThread):
                 state = self._ros_node.get_robot_state()
                 self.state_updated.emit(state)
                 next_state = now + self._state_interval
+
+            if now >= next_cam_discover:
+                # 相机由 process_manager 异步注入，话题出现后自动订阅
+                self._ros_node.discover_gui_camera_topic()
+                next_cam_discover = now + self._cam_discover_interval
+
+            if now >= next_cam_img:
+                img, seq = self._ros_node.get_gui_camera_image()
+                if img is not None and seq != self._last_gui_img_seq:
+                    self._last_gui_img_seq = seq
+                    self.gazebo_image_updated.emit(img)
+                next_cam_img = now + self._cam_img_interval
 
             if now >= next_map:
                 map_data = self._ros_node.get_map_data()
