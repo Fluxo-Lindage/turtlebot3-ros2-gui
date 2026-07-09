@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_gui</name>
+  <version>1.0.0</version>
+  <description>
+    基于 ROS2 Humble + PyQt5 的 TurtleBot3 机器人仿真控制 GUI 平台。
+    集成了仿真环境切换、SLAM 建图、自主导航、避障算法切换等功能。
+  </description>
+
+  <maintainer email="student@example.com">Robot Student</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS2 依赖 -->
+  <depend>rclpy</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav2_bringup</depend>
+  <depend>nav2_map_server</depend>
+  <depend>slam_toolbox</depend>
+  <depend>turtlebot3_gazebo</depend>
+  <depend>turtlebot3_navigation2</depend>
+
+  <!-- Python 依赖 -->
+  <depend>python3-pyqt5</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

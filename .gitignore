@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+venv/
+.venv/
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# ROS2
+*.log
+log/
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# Maps (user-generated)
+~/robot_maps/

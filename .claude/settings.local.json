@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3)",
+      "Bash(python3 /tmp/fix_process_manager.py /home/robot/07091430bugdefuse/robot_gui/process_manager.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg)",
+      "Bash(sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg)",
+      "Bash(sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg)",
+      "Bash(dpkg --print-architecture)",
+      "Bash(echo \"deb [arch=$\\(dpkg --print-architecture\\) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\")",
+      "Bash(sudo tee /etc/apt/sources.list.d/github-cli.list)",
+      "Bash(sudo apt update)",
+      "Bash(sudo apt install gh -y)",
+      "Read(//usr/bin/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(snap list *)",
+      "Bash(pip3 install *)",
+      "Bash(curl -sL https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz -o gh.tar.gz)",
+      "Bash(tar xzf *)",
+      "Bash(mkdir -p ~/.local/bin)",
+      "Bash(cp gh_2.63.2_linux_amd64/bin/gh ~/.local/bin/)",
+      "Bash(~/.local/bin/gh --version)",
+      "Bash(snap install *)",
+      "Read(//home/robot/.local/bin/**)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(git add *)"
+    ]
+  }
+}
