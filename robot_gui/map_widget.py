@@ -327,7 +327,7 @@ class MapWidget(QWidget):
         painter.drawPixmap(target_rect, self._map_pixmap)
 
     def _rebuild_map_pixmap(self):
-        """重建地图 Pixmap 缓存"""
+        """重建地图 Pixmap 缓存（numpy 向量化，避免逐像素 Python 循环）"""
         if self._map_data is None:
             return
 
@@ -335,27 +335,32 @@ class MapWidget(QWidget):
         if h == 0 or w == 0:
             return
 
-        # 创建 QImage
-        image = QImage(w, h, QImage.Format_RGB32)
-
-        # 颜色映射
         data = self._map_data
-        for y in range(h):
-            for x in range(w):
-                val = data[y, x]
-                if val < 0:  # 未知
-                    color = COLOR_UNKNOWN
-                elif val == 0:  # 空闲
-                    color = COLOR_FREE
-                else:  # 占用 (1-100)
-                    # 在浅灰和深灰之间插值
-                    t = val / 100.0
-                    r = int(COLOR_OCCUPIED_LOW.red() + (COLOR_OCCUPIED_HIGH.red() - COLOR_OCCUPIED_LOW.red()) * t)
-                    g = int(COLOR_OCCUPIED_LOW.green() + (COLOR_OCCUPIED_HIGH.green() - COLOR_OCCUPIED_LOW.green()) * t)
-                    b = int(COLOR_OCCUPIED_LOW.blue() + (COLOR_OCCUPIED_HIGH.blue() - COLOR_OCCUPIED_LOW.blue()) * t)
-                    color = QColor(r, g, b)
-                image.setPixelColor(x, y, color)
 
+        # 构建 RGB 数组，默认填“未知区域”颜色
+        rgb = np.empty((h, w, 3), dtype=np.uint8)
+        rgb[:, :, 0] = COLOR_UNKNOWN.red()
+        rgb[:, :, 1] = COLOR_UNKNOWN.green()
+        rgb[:, :, 2] = COLOR_UNKNOWN.blue()
+
+        # 空闲区域
+        free_mask = (data == 0)
+        rgb[free_mask, 0] = COLOR_FREE.red()
+        rgb[free_mask, 1] = COLOR_FREE.green()
+        rgb[free_mask, 2] = COLOR_FREE.blue()
+
+        # 占用区域 (1-100)：在 LOW 与 HIGH 之间按 val/100 线性插值
+        occ_mask = (data > 0)
+        if np.any(occ_mask):
+            t = data[occ_mask].astype(np.float32) / 100.0  # (N,)
+            low = np.array([COLOR_OCCUPIED_LOW.red(), COLOR_OCCUPIED_LOW.green(), COLOR_OCCUPIED_LOW.blue()], dtype=np.float32)
+            high = np.array([COLOR_OCCUPIED_HIGH.red(), COLOR_OCCUPIED_HIGH.green(), COLOR_OCCUPIED_HIGH.blue()], dtype=np.float32)
+            # t[:, None] (N,1) 与 low/high (3,) 广播 -> (N,3)
+            rgb[occ_mask] = (low + (high - low) * t[:, None]).astype(np.uint8)
+
+        # numpy buffer -> QImage。用 .copy() 防止数组被回收后 QImage 引用悬空
+        # bytesPerLine = w * 3（每像素 3 字节，RGB 顺序）
+        image = QImage(rgb.data, w, h, int(w * 3), QImage.Format_RGB888).copy()
         self._map_pixmap = QPixmap.fromImage(image)
 
     def _paint_grid(self, painter: QPainter):

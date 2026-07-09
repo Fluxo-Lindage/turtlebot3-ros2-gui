@@ -38,6 +38,8 @@ DEFAULT_MAP_DIR = os.path.expanduser('~/robot_maps')
 
 class MainWindow(QMainWindow):
 
+    MAX_LOG_BLOCKS = 500  # 日志面板保留的最大行数，超出则从最旧行开始删除
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -273,6 +275,7 @@ class MainWindow(QMainWindow):
         pm.log_message.connect(self._on_log_message)
         pm.process_started.connect(self._on_process_started)
         pm.process_stopped.connect(self._on_process_stopped)
+        pm.map_saved.connect(self._on_map_saved)
         self._map_widget.goal_selected.connect(self._on_map_goal_selected)
 
     def _init_ros(self):
@@ -282,6 +285,7 @@ class MainWindow(QMainWindow):
         self._ros_thread = RosSpinThread(self._ros_node)
         self._ros_thread.state_updated.connect(self._on_state_updated)
         self._ros_thread.map_updated.connect(self._on_map_updated)
+        self._ros_thread.nav_result.connect(self._on_nav_result)
         self._ros_thread.start()
         self._log('info', 'ROS2 通信节点已启动')
 
@@ -319,7 +323,17 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, '保存地图', os.path.join(DEFAULT_MAP_DIR, f'map_{ts}'), 'YAML (*.yaml)')
         if not path: return
         if path.endswith('.yaml'): path = path[:-5]
-        if self._process_manager.save_map(path): self._refresh_saved_maps()
+        # 异步保存：保存期间禁用按钮，完成后由 map_saved 信号刷新列表
+        self._btn_save_map.setEnabled(False)
+        self._btn_save_map.setText('保存中...')
+        self._process_manager.save_map(path)
+
+    @pyqtSlot(bool, str)
+    def _on_map_saved(self, success: bool, path: str):
+        self._btn_save_map.setEnabled(True)
+        self._btn_save_map.setText('保存地图')
+        if success:
+            self._refresh_saved_maps()
 
     def _on_launch_teleop(self):
         self._process_manager.launch_teleop_terminal()
@@ -382,6 +396,14 @@ class MainWindow(QMainWindow):
     def _on_cancel_goal(self):
         if self._ros_node: self._ros_node.cancel_navigation()
         self._map_widget.clear_goal(); self._log('info', '已取消导航')
+
+    @pyqtSlot(bool, str)
+    def _on_nav_result(self, success: bool, msg: str):
+        # 导航完成/失败/被拒的反馈落到 GUI 日志面板
+        self._log('info' if success else 'warn', msg)
+        if success:
+            # 到达目标：清除目标标记，表示本次任务结束
+            self._map_widget.clear_goal()
 
     def _set_goal_preset(self, x, y):
         self._edit_goal_x.setText(f'{x:.1f}'); self._edit_goal_y.setText(f'{y:.1f}')
@@ -485,7 +507,14 @@ class MainWindow(QMainWindow):
         lm = {'info': 'INFO ', 'warn': 'WARN ', 'error': 'ERROR'}
         self._log_text.append(f'<span style="color:#b8a98c">[{ts}]</span> <span style="color:{cm.get(level, "#6b5c4a")}">[{lm.get(level, "INFO")}]</span> {msg}')
         c = self._log_text.textCursor(); c.movePosition(QTextCursor.End); self._log_text.setTextCursor(c)
-        if self._log_text.document().blockCount() > 500: self._log_text.clear()
+        # 超过上限时只删除最旧的若干行，保留最近的日志（不再整体清空）
+        doc = self._log_text.document()
+        excess = doc.blockCount() - self.MAX_LOG_BLOCKS
+        if excess > 0:
+            cur = QTextCursor(doc)
+            cur.movePosition(QTextCursor.Start)
+            cur.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor, excess)
+            cur.removeSelectedText()
 
     def _cleanup(self):
         self._log('info', '正在关闭...')

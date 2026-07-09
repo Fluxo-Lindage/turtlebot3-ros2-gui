@@ -99,6 +99,10 @@ class RosRobotNode(Node):
         self._map_received = False
         self._map_seq: int = -1
 
+        # 待上报给 GUI 的导航事件 [(success, message), ...]
+        # Action 回调在 executor 线程触发，通过此队列交给 RosSpinThread 用信号发出
+        self._nav_results: list = []
+
         self.get_logger().info('ROS 机器人节点初始化完成 (含 TF 支持)')
 
     # ===================== 回调 =====================
@@ -307,6 +311,8 @@ class RosRobotNode(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().warn('导航目标被拒绝！')
+            with self._lock:
+                self._nav_results.append((False, '导航目标被拒绝！'))
             return
         self.get_logger().info('导航目标已被接受')
         self._current_goal_handle = goal_handle
@@ -319,10 +325,23 @@ class RosRobotNode(Node):
     def _nav_result_callback(self, future):
         result = future.result()
         if result.result == 0:
-            self.get_logger().info('导航完成！已到达目标点。')
+            msg = '导航完成！已到达目标点。'
+            self.get_logger().info(msg)
+            with self._lock:
+                self._nav_results.append((True, msg))
         else:
-            self.get_logger().warn(f'导航结束，状态码: {result.result}')
+            msg = f'导航结束，状态码: {result.result}'
+            self.get_logger().warn(msg)
+            with self._lock:
+                self._nav_results.append((False, msg))
         self._current_goal_handle = None
+
+    def take_nav_results(self) -> list:
+        """取出并清空待上报的导航事件（由 RosSpinThread 调用）"""
+        with self._lock:
+            results = self._nav_results[:]
+            self._nav_results.clear()
+            return results
 
     # ===================== 数学工具 =====================
 
@@ -347,6 +366,7 @@ class RosSpinThread(QThread):
 
     state_updated = pyqtSignal(dict)
     map_updated = pyqtSignal(dict)
+    nav_result = pyqtSignal(bool, str)  # (success, message) 导航完成/拒绝反馈
 
     def __init__(self, ros_node: RosRobotNode, parent=None):
         super().__init__(parent)
@@ -378,6 +398,10 @@ class RosSpinThread(QThread):
                     self._last_map_seq = map_data['seq']
                     self.map_updated.emit(map_data)
                 next_map = now + self._map_interval
+
+            # 转发导航事件（Action 回调在 executor 线程产生，此处转到 GUI 线程）
+            for success, msg in self._ros_node.take_nav_results():
+                self.nav_result.emit(success, msg)
 
         self._executor.remove_node(self._ros_node)
 

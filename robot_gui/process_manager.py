@@ -13,6 +13,7 @@
 import os
 import signal
 import subprocess
+import threading
 import time
 from enum import Enum
 from typing import Optional, Dict, Callable, List
@@ -82,6 +83,7 @@ class ProcessManager(QObject):
     log_message = pyqtSignal(str, str)  # (message, level: info/warn/error)
     process_started = pyqtSignal(str)   # process_type
     process_stopped = pyqtSignal(str)   # process_type
+    map_saved = pyqtSignal(bool, str)   # (success, save_path) 地图保存完成回调
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -209,15 +211,16 @@ class ProcessManager(QObject):
 
     def save_map(self, save_path: str) -> bool:
         """
-        保存当前地图
+        异步保存当前地图（不阻塞 GUI 线程）
 
         使用 nav2_map_server 的 map_saver_cli 保存 SLAM 构建的地图。
+        结果通过 map_saved 信号回调通知，避免 subprocess.run 阻塞界面。
 
         Args:
             save_path: 地图保存路径（不含扩展名），会生成 .pgm 和 .yaml 两个文件
 
         Returns:
-            bool: 保存成功返回 True
+            bool: 保存任务已成功启动返回 True（不代表地图已落盘）
         """
         self.log_message.emit(f'正在保存地图到: {save_path}...', 'info')
 
@@ -230,28 +233,32 @@ class ProcessManager(QObject):
             '--ros-args', '-p', 'use_sim_time:=true',
         ]
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=30.0,
-            )
-            if result.returncode == 0:
-                self.log_message.emit(
-                    f'地图已保存: {save_path}.pgm, {save_path}.yaml', 'info'
+        def worker():
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=30.0,
                 )
-                return True
-            else:
-                self.log_message.emit(f'保存地图失败: {result.stderr}', 'error')
-                return False
-        except subprocess.TimeoutExpired:
-            self.log_message.emit('保存地图超时（30秒），请检查 SLAM 是否正在运行。', 'error')
-            return False
-        except FileNotFoundError:
-            self.log_message.emit('未找到 map_saver_cli，请检查 nav2_map_server 安装。', 'error')
-            return False
+                if result.returncode == 0:
+                    self.log_message.emit(
+                        f'地图已保存: {save_path}.pgm, {save_path}.yaml', 'info'
+                    )
+                    self.map_saved.emit(True, save_path)
+                else:
+                    self.log_message.emit(f'保存地图失败: {result.stderr}', 'error')
+                    self.map_saved.emit(False, save_path)
+            except subprocess.TimeoutExpired:
+                self.log_message.emit('保存地图超时（30秒），请检查 SLAM 是否正在运行。', 'error')
+                self.map_saved.emit(False, save_path)
+            except FileNotFoundError:
+                self.log_message.emit('未找到 map_saver_cli，请检查 nav2_map_server 安装。', 'error')
+                self.map_saved.emit(False, save_path)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
 
     def start_navigation(self, map_path: str, planner: str = 'dwa') -> bool:
         """
