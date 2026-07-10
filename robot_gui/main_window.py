@@ -334,6 +334,9 @@ class MainWindow(QMainWindow):
         if self._process_manager.start_slam():
             self._btn_slam_start.setEnabled(False); self._btn_slam_stop.setEnabled(True)
             self._slam_running = True
+            # 新建图开始：重置 map 坐标位姿缓存，避免残留旧坐标导致显示卡住
+            if self._ros_node: self._ros_node.reset_map_pose()
+            self._map_widget.clear_robot_trail()
 
     def _on_stop_slam(self):
         self._process_manager.stop_slam()
@@ -389,6 +392,9 @@ class MainWindow(QMainWindow):
             self._btn_nav_start.setEnabled(False); self._btn_nav_stop.setEnabled(True)
             self._btn_send_goal.setEnabled(True); self._btn_cancel_goal.setEnabled(True)
             self._nav_running = True; self._lbl_planner.setText(p.upper())
+            # 切地图后重置 map 坐标位姿缓存，避免回退到上一张地图的旧坐标导致机器人“卡住”
+            if self._ros_node: self._ros_node.reset_map_pose()
+            self._map_widget.clear_robot_trail()
             state = self._ros_node.get_robot_state() if self._ros_node else {}
             init_x = state.get('odom_x', 0.0)
             init_y = state.get('odom_y', 0.0)

@@ -258,6 +258,20 @@ class RosRobotNode(Node):
             self._map_width = 0
             self._map_height = 0
 
+    def reset_map_pose(self):
+        """
+        只重置 map 坐标系下的位姿缓存（_map_x/_map_y/_map_yaw 归零）。
+
+        每次“启动建图/导航”时调用：切地图后 AMCL 还没收敛、TF 暂时查不到时，
+        get_robot_state 的回退分支会因此改用 odom（机器人当前真实位置），
+        而不是上一张地图残留的旧坐标——避免机器人在地图显示上“卡住不动”。
+        odom 数据保留不动（那是 Gazebo 的真实连续数据）。
+        """
+        with self._lock:
+            self._map_x = 0.0
+            self._map_y = 0.0
+            self._map_yaw = 0.0
+
     def get_map_data(self) -> Optional[dict]:
         """获取最新地图数据（已翻转，可直接渲染）"""
         with self._lock:
