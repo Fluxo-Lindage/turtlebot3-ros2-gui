@@ -248,8 +248,16 @@ class MainWindow(QMainWindow):
         self._planner_btn_group = QButtonGroup(self)
         self._radio_dwa = QRadioButton('DWA (动态窗口法)'); self._radio_dwa.setChecked(True)
         self._planner_btn_group.addButton(self._radio_dwa, 0); ly.addWidget(self._radio_dwa)
+        self._radio_mppi = QRadioButton('MPPI (模型预测)')
+        self._planner_btn_group.addButton(self._radio_mppi, 1); ly.addWidget(self._radio_mppi)
         self._radio_teb = QRadioButton('TEB (时间弹性带)')
-        self._planner_btn_group.addButton(self._radio_teb, 1); ly.addWidget(self._radio_teb)
+        self._planner_btn_group.addButton(self._radio_teb, 2); ly.addWidget(self._radio_teb)
+        # TEB 在 Humble 无预编译包，没装就禁用并提示
+        if not self._process_manager.is_planner_available('teb'):
+            self._radio_teb.setEnabled(False)
+            self._radio_teb.setToolTip('未安装 teb_local_planner 包，不可用。\n'
+                                       '安装：sudo apt install ros-humble-teb-local-planner')
+            self._radio_teb.setText('TEB (未安装)')
         self._btn_apply_planner = QPushButton('应用算法'); self._btn_apply_planner.clicked.connect(self._on_apply_planner); ly.addWidget(self._btn_apply_planner)
         return g
 
@@ -448,9 +456,17 @@ class MainWindow(QMainWindow):
         self._gazebo_running = self._slam_running = self._nav_running = False
         self._clear_map_and_state()
 
+    def _selected_planner(self) -> str:
+        """根据当前单选按钮返回规划器标识：'dwa' / 'mppi' / 'teb'"""
+        if self._radio_mppi.isChecked():
+            return 'mppi'
+        if self._radio_teb.isChecked():
+            return 'teb'
+        return 'dwa'
+
     def _on_apply_planner(self):
         old = self._current_planner
-        self._current_planner = 'dwa' if self._radio_dwa.isChecked() else 'teb'
+        self._current_planner = self._selected_planner()
         self._lbl_planner.setText(self._current_planner.upper())
         if self._current_planner == old: self._log('info', f'已在 {self._current_planner.upper()} 模式'); return
         self._log('info', f'切换算法: {self._current_planner.upper()}')
