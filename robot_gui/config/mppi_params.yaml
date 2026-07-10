@@ -109,7 +109,7 @@ bt_navigator_rclcpp_node:
 controller_server:
   ros__parameters:
     use_sim_time: True
-    controller_frequency: 20.0
+    controller_frequency: 10.0      # MPPI 比 DWB 重，降到 10Hz 避免算不过来导致导航中止
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -135,9 +135,9 @@ controller_server:
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       # ---- 基本参数 ----
-      time_steps: 56              # 预测时间步数
+      time_steps: 32              # 预测时间步数（降到 32 减负）
       model_dt: 0.1               # 每步时间间隔 (s)
-      batch_size: 2000            # 采样轨迹数（越大越精细但更耗 CPU）
+      batch_size: 1500            # 采样轨迹数（1500 兼顾质量与 CPU）
       iteration_count: 1          # 优化迭代次数
       prune_distance: 1.7         # 路径裁剪距离 (m)
       transform_tolerance: 0.1
@@ -150,7 +150,7 @@ controller_server:
       # ---- 运动模型与速度限制（与 DWA 一致，适配 Waffle Pi）----
       motion_model: "DiffDrive"
       vx_max: 0.22                # 最大线速度 (m/s)
-      vx_min: 0.0                 # 最小线速度（0 = 不允许后退）
+      vx_min: -0.22               # 最小线速度（允许后退，MPPI 需要这个灵活性）
       wz_max: 1.0                 # 最大角速度 (rad/s)
       vx_std: 0.2                 # 线速度采样噪声标准差
       wz_std: 0.4                 # 角速度采样噪声标准差

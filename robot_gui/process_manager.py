@@ -335,15 +335,6 @@ class ProcessManager(QObject):
             self.log_message.emit(f'地图文件不存在: {map_path}', 'error')
             return False
 
-        # 规划器可用性检查：TEB 在 Humble 无预编译包，没装就别启动坏配置
-        if not self.is_planner_available(planner):
-            self.log_message.emit(
-                f'{planner.upper()} 未安装，已回退到 DWA。'
-                f'(TEB 需要 sudo apt install ros-humble-teb-local-planner 或源码编译)',
-                'warn'
-            )
-            planner = 'dwa'
-
         self.log_message.emit(f'正在启动导航 (算法: {planner.upper()})...', 'info')
 
         env = os.environ.copy()
@@ -392,26 +383,6 @@ class ProcessManager(QObject):
         """停止导航"""
         self._stop_process(ProcessType.NAVIGATION)
         self.log_message.emit('导航已停止', 'info')
-
-    def is_planner_available(self, planner: str) -> bool:
-        """
-        检查某个局部规划器是否已安装可用。
-
-        - dwa / mppi：随 nav2 一起安装，通常总有
-        - teb：Humble 无预编译包，需单独安装；这里检测 ros2 包是否存在
-        """
-        if planner in ('dwa', 'mppi'):
-            return True
-        if planner == 'teb':
-            try:
-                result = subprocess.run(
-                    ['ros2', 'pkg', 'list'],
-                    capture_output=True, text=True, timeout=5.0,
-                )
-                return result.returncode == 0 and 'teb_local_planner' in result.stdout
-            except Exception:
-                return False
-        return True
 
     def switch_planner(self, map_path: str, planner: str) -> bool:
         """

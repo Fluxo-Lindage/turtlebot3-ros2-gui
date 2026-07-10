@@ -252,12 +252,6 @@ class MainWindow(QMainWindow):
         self._planner_btn_group.addButton(self._radio_mppi, 1); ly.addWidget(self._radio_mppi)
         self._radio_teb = QRadioButton('TEB (时间弹性带)')
         self._planner_btn_group.addButton(self._radio_teb, 2); ly.addWidget(self._radio_teb)
-        # TEB 在 Humble 无预编译包，没装就禁用并提示
-        if not self._process_manager.is_planner_available('teb'):
-            self._radio_teb.setEnabled(False)
-            self._radio_teb.setToolTip('未安装 teb_local_planner 包，不可用。\n'
-                                       '安装：sudo apt install ros-humble-teb-local-planner')
-            self._radio_teb.setText('TEB (未安装)')
         self._btn_apply_planner = QPushButton('应用算法'); self._btn_apply_planner.clicked.connect(self._on_apply_planner); ly.addWidget(self._btn_apply_planner)
         return g
 
