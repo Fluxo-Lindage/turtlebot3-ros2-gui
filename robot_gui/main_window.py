@@ -520,6 +520,7 @@ class MainWindow(QMainWindow):
     def _clear_map_and_state(self):
         if self._ros_node:
             self._ros_node.reset_state()
+            self._ros_node.reset_map_pose()
             self._ros_node.clear_gui_camera()
         self._map_widget.clear_map()
         self._gazebo_view.clear_view()

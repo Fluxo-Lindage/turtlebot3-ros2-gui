@@ -193,6 +193,11 @@ class MapWidget(QWidget):
         self._goal_x = None
         self._goal_y = None
         self._robot_trail.clear()
+        # 重置机器人位姿缓存，避免清除后还按上一张地图的旧坐标画小车
+        self._robot_x = 0.0
+        self._robot_y = 0.0
+        self._robot_yaw = 0.0
+        self._robot_odom_ok = False
         self.update()
 
     def clear_robot_trail(self):
