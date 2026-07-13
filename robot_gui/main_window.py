@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
     # ===================== UI 构建 =====================
 
     def _init_ui(self):
-        self.setWindowTitle('机器人仿真控制平台 — TurtleBot3 + ROS2 Humble')
+        self.setWindowTitle('机器人仿真控制平台')
         self.setMinimumSize(1200, 750)
         self._apply_style()
 
@@ -112,8 +112,6 @@ class MainWindow(QMainWindow):
 
         body.setSizes([300, 600, 260])
         main_layout.addWidget(body, 1)
-
-        main_layout.addWidget(self._create_log_panel())
 
     def _apply_style(self):
         self.setStyleSheet("""
@@ -275,14 +273,6 @@ class MainWindow(QMainWindow):
         tp = QLabel('左键:设目标  右键:清除\n滚轮:缩放  拖动:平移\n双击:适应  R:重置')
         tp.setStyleSheet('color:#8b7355; font-size:13px; border:none; background:transparent;'); tl.addWidget(tp); ly.addWidget(tg)
         ly.addStretch(); return p
-
-    def _create_log_panel(self):
-        g = QGroupBox('系统日志'); ly = QVBoxLayout(g); ly.setContentsMargins(6, 4, 6, 6)
-        self._log_text = QTextEdit(); self._log_text.setReadOnly(True); self._log_text.setMaximumHeight(130)
-        ly.addWidget(self._log_text)
-        b = QPushButton('清空'); b.setMaximumWidth(60)
-        b.setStyleSheet('font-size:13px; padding:2px 6px; min-height:24px;'); b.clicked.connect(self._log_text.clear); ly.addWidget(b)
-        return g
 
     # ===================== 信号 & ROS =====================
 
